@@ -67,37 +67,36 @@ export const main = Reach.App(() => {
     bondingCost,
     tokSupply,
     howMuchPaid,
-    numOfRenters,
-  ] = parallelReduce([Creator, secondaryBottom, true, STARTING_PACK_COST, 1, 0, 0])
+    isRenting,
+  ] = parallelReduce([
+    Creator,
+    secondaryBottom,
+    true,
+    STARTING_PACK_COST,
+    1,
+    0,
+    false,
+  ])
     .invariant(balance(assetId) == amt)
     .invariant(balance() === (isFirstTransaction ? 0 : lastPrice))
     .invariant(balance() === howMuchPaid)
-    .invariant(numOfRenters == Map.size(rentSet))
     .while(lastConsensusTime() <= end)
     .define(() => {
       const handleNotFirstTransaction = () =>
         transfer(lastPrice).to(highestTransaction);
-      const doRentStart = (user) => {
-        numOfRenters = numOfRenters + 1
-        rentSet.insert(user);
-      }
-      const doEndRent = user => {
-        numOfRenters = numOfRenters - 1;
-        rentSet.remove(user);
-      };
-      const doBondingCurve = () => {
+      const doBondingCurve = isTrue => {
         const newSupply = tokSupply + 1;
         const newCost =
           pow(mul(newSupply, PRICE_INCREASE_MULTIPLE), 2, 10) +
           mul(2, newSupply) +
           STARTING_PACK_COST;
-        return newCost;
+        return isTrue ? [newCost, newCost] : [tokSupply, bondingCost];
       };
     })
     .api_(Gamer.transaction, (bondCurve, transaction, rentTime) => {
       const who = this;
       const shouldStartRent = rentTime > 0;
-      const shouldEndRent = rentSet.Map.size() > 0;
+      const shouldEndRent = isRenting === true;
       check(transaction > lastPrice, 'transaction is too low');
       return [
         bondCurve ? bondingCost : transaction,
@@ -106,24 +105,32 @@ export const main = Reach.App(() => {
           if (!isFirstTransaction) {
             handleNotFirstTransaction();
           }
-          if (shouldStartRent) {
-            doRentStart(who);
-          }
-          if (shouldEndRent) {
-            doEndRent(who);
-          }
-          if (bondCurve) {
-            doBondingCurve();
-          }
-          Creator.interact.seePrice(who, transaction);
-          return [who, transaction, false];
+          const [newSupply, newCost] = doBondingCurve(bondCurve);
+          //   const newBondingCost = Creator.interact.seePrice(who, transaction);
+          return [
+            who,
+            transaction,
+            false,
+            newCost,
+            newSupply,
+            howMuchPaid,
+            shouldStartRent ? true : shouldEndRent ? false : isRenting,
+          ];
         },
       ];
-    })
-    .timeout(absoluteTime(end), () => {
-      Creator.publish();
-      return [highestTransaction, lastPrice, isFirstTransaction];
     });
+  // .timeout(absoluteTime(end), () => {
+  //   Creator.publish();
+  //   return [
+  //     highestTransaction,
+  //     lastPrice,
+  //     isFirstTransaction,
+  //     bondingCost,
+  //     tokSupply,
+  //     howMuchPaid,
+  //     numOfRenters,
+  //   ];
+  // });
 
   transfer(amt, assetId).to(highestTransaction);
   if (!isFirstTransaction) {
