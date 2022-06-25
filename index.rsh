@@ -79,19 +79,19 @@ export const main = Reach.App(() => {
   ])
     .invariant(balance(assetId) == amt)
     .invariant(balance() === (isFirstTransaction ? 0 : lastPrice))
-    .invariant(balance() === howMuchPaid)
+    // .invariant(balance() === howMuchPaid)
     .while(lastConsensusTime() <= end)
     .define(() => {
       const handleNotFirstTransaction = () =>
         transfer(lastPrice).to(highestTransaction);
-      const doBondingCurve = isTrue => {
-        const newSupply = tokSupply + 1;
-        const newCost =
-          pow(mul(newSupply, PRICE_INCREASE_MULTIPLE), 2, 10) +
-          mul(2, newSupply) +
-          STARTING_PACK_COST;
-        return isTrue ? [newCost, newCost] : [tokSupply, bondingCost];
-      };
+      // const doBondingCurve = isTrue => {
+      //   const newSupply = tokSupply + 1;
+      //   const newCost =
+      //     pow(mul(newSupply, PRICE_INCREASE_MULTIPLE), 2, 10) +
+      //     mul(2, newSupply) +
+      //     STARTING_PACK_COST;
+      //   return isTrue ? [newSupply, newCost] : [tokSupply, bondingCost];
+      // };
     })
     .api_(Gamer.transaction, (bondCurve, transaction, rentTime) => {
       const who = this;
@@ -99,22 +99,21 @@ export const main = Reach.App(() => {
       const shouldEndRent = isRenting === true;
       check(transaction > lastPrice, 'transaction is too low');
       return [
-        bondCurve ? bondingCost : transaction,
+        [transaction],
         notify => {
           notify([highestTransaction, lastPrice]);
           if (!isFirstTransaction) {
             handleNotFirstTransaction();
           }
-          const [newSupply, newCost] = doBondingCurve(bondCurve);
-          //   const newBondingCost = Creator.interact.seePrice(who, transaction);
+          // const [newSupply, newCost] = doBondingCurve(bondCurve);
           return [
             who,
             transaction,
             false,
-            newCost,
-            newSupply,
+            bondingCost,
+            tokSupply,
             howMuchPaid,
-            shouldStartRent ? true : shouldEndRent ? false : isRenting,
+            shouldStartRent,
           ];
         },
       ];
