@@ -14,20 +14,24 @@ const assetId = theAsset.id;
 const licenseType = Math.floor(Math.random() * 5);
 const shares = 1;
 const retailPrice = stdlib.parseCurrency(10);
-const minSec = stdlib.parseCurrency(0);
+const secondaryBottom = stdlib.parseCurrency(0);
 const royalty = 5;
 const lenInBlocks = 10;
-const params = { assetId, licenseType, shares, retailPrice, minSec, royalty, lenInBlocks };
+const params = { assetId, licenseType, shares, retailPrice, secondaryBottom, royalty, lenInBlocks };
 
 let done = false;
 const bidders = [];
 const startLicense = async () => {
-    let transaction = minSec;
+    let transaction = secondaryBottom;
     const runBidder = async (who) => {
         const inc = stdlib.parseCurrency(Math.random() * 10);
         transaction = transaction.add(inc);
 
         const acc = await stdlib.newTestAccount(startingBalance);
+        
+        const proof = await ctc.views.Obs.proof();
+        console.log(`The asset is owned by ${formatAddress(who)}.`);
+        
         acc.setDebugLabel(who);
         await acc.tokenAccept(assetId);
         bidders.push([who, acc]);
@@ -51,6 +55,41 @@ const startLicense = async () => {
     while (! done) {
         await stdlib.wait(1);
     }
+
+    const runRenter = async (who) => {
+        const rentPrice = stdlib.parseCurrency(Math.random() * 10);
+
+        const acc = await stdlib.newTestAccount(startingBalance);
+
+        console.log(`Owner ${formatAddress(who)} places asset for rent.`);
+
+        acc.setDebugLabel(who);
+        await acc.tokenAccept(assetId);
+        renter.push([who, acc]);
+        const ctc = acc.contract(backend, ctcCreator.getInfo());
+        
+        console.log(`${who} rents for ${stdlib.formatCurrency(rentPrice)}.`);
+        console.log(`${who} balance before is ${await getBal()}`);
+
+        console.log(`${who} balance after if ${await getBal()}`);
+    };
+
+    await runRenter('Denise');
+    while (! done) {
+        await stdlib.wait(1);
+    } else {
+        returnRent();
+    }
+
+    const returnRent = async (who) => {
+        accCreator.push([who, acc]);
+    }
+
+
+    // const runRenter = async (who) => {
+    //     const acc = await stdlib.newTestAccount(standardBalance);
+
+    // }
 };
 
 const ctcCreator = accCreator.contract(backend);
@@ -69,10 +108,6 @@ await ctcCreator.p.Creator({
         console.log(`Creator saw that ${stdlib.formatAddress(purchaser)} won with ${stdlib.formatCurrency(amt)}`);
     },
 });
-
-// View //
-//const proof = await ctc.views.Obs.proof();
-console.log(`The asset is owned by ${formatAddress(who)}.`);
 
 for (const [who, acc] of bidders) {
     const [ amt, amtAsset ] = await stdlib.balancesOf(acc, [null, assetId]);

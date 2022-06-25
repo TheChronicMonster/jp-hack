@@ -7,7 +7,7 @@ export const main = Reach.App(() => {
             licenseType: UInt,
             shares: UInt,
             retailPrice: UInt,
-            minSec: UInt,
+            secondaryBottom: UInt,
             royalty: UInt,
             lenInBlocks: UInt,
         })),
@@ -17,6 +17,7 @@ export const main = Reach.App(() => {
     });
     const Gamer = API('Gamer', {
         transaction: Fun([UInt], Tuple(Address, UInt)),
+        rent: Fun([UInt, UInt], Tuple(Address, UInt)),
     });
     const V = View('Obs', {
         proof: Fun([Address], Null),
@@ -24,12 +25,12 @@ export const main = Reach.App(() => {
     init();
 
     Creator.only(() => {
-        const { assetId, licenseType, shares, retailPrice, minSec, royalty, lenInBlocks } = declassify(interact.setLicense());
+        const { assetId, licenseType, shares, retailPrice, secondaryBottom, royalty, lenInBlocks } = declassify(interact.setLicense());
     });
-    Creator.publish(assetId, licenseType, shares, retailPrice, minSec, royalty, lenInBlocks);
+    Creator.publish(assetId, licenseType, shares, retailPrice, secondaryBottom, royalty, lenInBlocks);
     
     const amt = 1;
-    // V.proof.set(proof);
+
     commit();
     Creator.pay([[amt, assetId]]);
     Creator.interact.isReady();
@@ -40,7 +41,7 @@ export const main = Reach.App(() => {
         highestTransaction,
         lastPrice,
         isFirstTransaction,
-    ] = parallelReduce([Creator, minSec, true])
+    ] = parallelReduce([Creator, secondaryBottom, true])
         .invariant(balance(assetId) == amt)
         .invariant(balance() == (isFirstTransaction ? 0: lastPrice))
         .while(lastConsensusTime() <= end)
@@ -64,6 +65,30 @@ export const main = Reach.App(() => {
         transfer( amt, assetId ).to(highestTransaction);
         if ( ! isFirstTransaction ) { transfer(lastPrice).to(Creator); }
         Creator.interact.showOutcome(highestTransaction, lastPrice);
+
+
+    const [
+        lastTransaction,
+        secondaryPrice,
+        isFirstTransaction,
+    ] = parallelReduce([Creator, secondaryBottom, true])
+        .invariant(balance() == (isFirstTransaction ? 0 : secondaryPrice)
+        .while(lastConsensusTime() <= end)
+        .api_(Gamer.rent, (transaction, lenTime) => {
+            check(transaction == secondaryPrice, "bid not equal to ask");
+            return [ transaction, (notify) => {
+                notify([highestTransaction, lastPrice, false]);
+                transfer(lastPrice).to(highestTransaction);
+                const who = this;
+                Creator.interact.seePrice(who, transaction);
+                return [who, transaction];
+            }];
+        })
+        .timeout(absoluteTime(end), () => {
+            Creator.publish();
+            return [lastTransaction, secondaryPrice, false];
+        });
+
     commit();
     exit();
 });
