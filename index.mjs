@@ -43,6 +43,7 @@ const params = { assetId, licenseType, shares, retailPrice, secondaryBottom, roy
 
 let done = false;
 const buyers = [];
+const renters = [];
 const startLicense = async () => {
     let transaction = secondaryBottom;
     const runBuyer = async (who) => {
@@ -66,44 +67,65 @@ const startLicense = async () => {
             console.log(`${who} failed to bid, because the auction is over`);
         }
         console.log(`${who} balance after is ${await getBal()}`);
+
+        console.log(`Open the view`);
+        const proof = await ctc.views.Obs.proof();
+        console.log(`The asset is owned by ${who}.`);
     };
 
     await runBuyer('Alice');
     await runBuyer('Bob');
     await runBuyer('Claire');
+    done = true;
     while (! done) {
         await stdlib.wait(1);
     }
 
-    console.log(`Open the view`);
-    const proof = await ctc.views.Obs.proof();
-    console.log(`The asset is owned by ${formatAddress(who)}.`);
+    // console.log(`Open the view`);
+    // const proof = await ctc.views.Obs.proof();
+    // console.log(`The asset is owned by ${formatAddress(who)}.`);
 
     const runRenter = async (who) => {
+        //let done = false;
+        const getBal = async () => stdlib.formatCurrency(await stdlib.balanceOf(acc));
         const rentPrice = stdlib.parseCurrency(Math.random() * 10);
-
         const acc = await stdlib.newTestAccount(startingBalance);
-
-        console.log(`Owner ${formatAddress(who)} places asset for rent.`);
+        console.log(`Owner ${who} places asset for rent.`);
 
         acc.setDebugLabel(who);
         await acc.tokenAccept(assetId);
-        renter.push([who, acc]);
+        renters.push([who, acc]);
         
         console.log(`${who} rents for ${stdlib.formatCurrency(rentPrice)}.`);
         console.log(`${who} balance before is ${await getBal()}`);
-
-        console.log(`${who} balance after if ${await getBal()}`);
+        try {
+            const [ lastRenter, lastRent ] = await ctc.apis.Gamer.transaction(transaction);
+            console.log(`${who}, ${lastRenter} rented for ${stdlib.formatCurrency(lastRent)}.`);
+        } catch (e) {
+            console.log(`${who} failed to rent, because the item is no longer available.`);
+        }
+        console.log(`${who} balance after is ${await getBal()}`);
     };
 
     await runRenter('Denise');
+    //done = true;
     while (! done) {
         await stdlib.wait(1);
     }
+    console.log(`Rent sequence 1 complete`);
 
     const returnRent = async (who) => {
-        accCreator.push([who, acc]);
+        const getBal = async () => stdlib.formatCurrency(await stdlib.balanceOf(acc));
+        const rentPrice = stdlib.parseCurrency(Math.random() * 10);
+        const acc = await stdlib.newTestAccount(startingBalance);
+        
+        acc.setDebugLabel(who);
+        await acc.tokenAccept(assetId);
+        renters.push([who, acc]);
+        console.log(`returning Rent`);
+        console.log(`${who} returns the asset`)
     }
+    await returnRent('Denise');
 };
 
 const ctcCreator = accCreator.contract(backend);
@@ -123,8 +145,8 @@ await ctcCreator.p.Creator({
     },
 });
 
-for (const [who, acc] of buyers) {
-    const [ amt, amtAsset ] = await stdlib.balancesOf(acc, [null, assetId]);
-    console.log(`${who} has ${stdlib.formatCurrency(amt)} ${stdlib.standardUnit} and ${amtAsset} of the Asset`);
-}
-done = true;
+console.log(`announce results`);
+    for (const [who, acc] of buyers) {
+        const [ amt, amtAsset ] = await stdlib.balancesOf(acc, [null, assetId]);
+        console.log(`${who} has ${stdlib.formatCurrency(amt)} ${stdlib.standardUnit} and ${amtAsset} of the Asset`);
+    }
