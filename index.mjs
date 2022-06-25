@@ -4,18 +4,20 @@ const stdlib = loadStdlib();
 
 const startingBalance = stdlib.parseCurrency(100);
 
+const LICENSETYPE = ['FREE', 'LIMITED', 'BONDING CURVE', 'FRACTIONAL', 'CUSTOM'];
+
 console.log(`Creating test Assset`);
 const accCreator = await stdlib.newTestAccount(startingBalance);
 
 const theAsset = await stdlib.launchToken(accCreator, "Alloy game", "GAME", { supply: 1 });
 const assetId = theAsset.id;
-const LICENSETYPE = ['FREE', 'LIMITED', 'BONDING CURVE', 'FRACTIONAL', 'CUSTOM'];
+const licenseType = Math.floor(Math.random() * 5);
 const shares = 1;
 const retailPrice = stdlib.parseCurrency(10);
 const minSec = stdlib.parseCurrency(0);
 const royalty = 5;
 const lenInBlocks = 10;
-const params = { assetId, shares, retailPrice, minSec, royalty, lenInBlocks };
+const params = { assetId, licenseType, shares, retailPrice, minSec, royalty, lenInBlocks };
 
 let done = false;
 const bidders = [];
@@ -27,9 +29,9 @@ const startLicense = async () => {
 
         const acc = await stdlib.newTestAccount(startingBalance);
         acc.setDebugLabel(who);
-        await acc.tokenAccept(nftId);
+        await acc.tokenAccept(assetId);
         bidders.push([who, acc]);
-        const ctc = acc.contract(bakcend, ctcCreator.getInfo());
+        const ctc = acc.contract(backend, ctcCreator.getInfo());
         const getBal = async () => stdlib.formatCurrency(await stdlib.balanceOf(acc));
 
         console.log(`${who} bids ${stdlib.formatCurrency(transaction)}.`);
@@ -77,7 +79,7 @@ const whoOwns = await ctc.views.Obs.whoOwns();
 console.log(`The asset is owned by ${formatAddress(who, amt)}.`);
 
 for (const [who, acc] of bidders) {
-    const [ amt, amtAsset ] = await stdlib.balancesOf(acc, [null, nftId]);
+    const [ amt, amtAsset ] = await stdlib.balancesOf(acc, [null, assetId]);
     console.log(`${who} has ${stdlib.formatCurrency(amt)} ${stdlib.standardUnit} and ${amtAsset} of the Asset`);
 }
 done = true;
