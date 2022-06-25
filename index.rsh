@@ -15,6 +15,7 @@ export const main = Reach.App(() => {
         secondaryBottom: UInt,
         royalty: UInt,
         lenInBlocks: UInt,
+        isBondingCurve: Bool,
       })
     ),
     isReady: Fun([], Null),
@@ -22,7 +23,8 @@ export const main = Reach.App(() => {
     showOutcome: Fun([Address, UInt], Null),
   });
   const Gamer = API('Gamer', {
-    transaction: Fun([Bool, UInt, UInt], Tuple(Address, UInt)),
+    transaction: Fun([UInt, UInt], Tuple(Address, UInt)),
+    doBonding: Fun([], Null),
   });
   const V = View('Obs', {
     proof: Fun([Address], Null),
@@ -38,6 +40,7 @@ export const main = Reach.App(() => {
       secondaryBottom,
       royalty,
       lenInBlocks,
+      isBondingCurve,
     } = declassify(interact.setLicense());
   });
   Creator.publish(
@@ -47,12 +50,11 @@ export const main = Reach.App(() => {
     retailPrice,
     secondaryBottom,
     royalty,
-    lenInBlocks
+    lenInBlocks,
+    isBondingCurve
   );
 
   const amt = 1;
-
-  const rentSet = new Set();
 
   commit();
   Creator.pay([[amt, assetId]]);
@@ -64,36 +66,67 @@ export const main = Reach.App(() => {
     highestTransaction,
     lastPrice,
     isFirstTransaction,
-    bondingCost,
-    tokSupply,
-    howMuchPaid,
     isRenting,
+    tokSupply,
+    costOfBonding,
+    bondingPaid,
   ] = parallelReduce([
     Creator,
     secondaryBottom,
     true,
-    STARTING_PACK_COST,
-    1,
-    0,
     false,
+    1,
+    STARTING_PACK_COST,
+    0,
   ])
+    .define(() => {
+      const getBalance = () => {
+        if (isBondingCurve) {
+          return bondingPaid;
+        } else {
+          return isFirstTransaction ? 0 : lastPrice;
+        }
+      };
+    })
     .invariant(balance(assetId) == amt)
-    .invariant(balance() === (isFirstTransaction ? 0 : lastPrice))
-    // .invariant(balance() === howMuchPaid)
+    .invariant(balance() === getBalance())
     .while(lastConsensusTime() <= end)
+    .define(() => {
+      const getCost = () => {
+        const newSupply = tokSupply + 1;
+        // bonding curve - ax^2 + bx + c
+        const newCost =
+          pow(mul(newSupply, PRICE_INCREASE_MULTIPLE), 2, 10) +
+          mul(2, newSupply) +
+          STARTING_PACK_COST;
+        return [newSupply, newCost];
+      };
+    })
+    .api_(Gamer.doBonding, () => {
+      check(isBondingCurve, 'is bonding curve');
+      const [newSupply, newCost] = getCost();
+      return [
+        [costOfBonding],
+        notify => {
+          notify(null);
+          return [
+            this,
+            lastPrice,
+            false,
+            false,
+            newSupply,
+            newCost,
+            bondingPaid + costOfBonding,
+          ];
+        },
+      ];
+    })
     .define(() => {
       const handleNotFirstTransaction = () =>
         transfer(lastPrice).to(highestTransaction);
-      // const doBondingCurve = isTrue => {
-      //   const newSupply = tokSupply + 1;
-      //   const newCost =
-      //     pow(mul(newSupply, PRICE_INCREASE_MULTIPLE), 2, 10) +
-      //     mul(2, newSupply) +
-      //     STARTING_PACK_COST;
-      //   return isTrue ? [newSupply, newCost] : [tokSupply, bondingCost];
-      // };
     })
-    .api_(Gamer.transaction, (bondCurve, transaction, rentTime) => {
+    .api_(Gamer.transaction, (transaction, rentTime) => {
+      check(!isBondingCurve, 'is bonding curve');
       const who = this;
       const shouldStartRent = rentTime > 0;
       const shouldEndRent = isRenting === true;
@@ -105,37 +138,22 @@ export const main = Reach.App(() => {
           if (!isFirstTransaction) {
             handleNotFirstTransaction();
           }
-          // const [newSupply, newCost] = doBondingCurve(bondCurve);
           return [
             who,
             transaction,
             false,
-            bondingCost,
-            tokSupply,
-            howMuchPaid,
             shouldStartRent,
+            tokSupply,
+            costOfBonding,
+            bondingPaid,
           ];
         },
       ];
     });
-  // .timeout(absoluteTime(end), () => {
-  //   Creator.publish();
-  //   return [
-  //     highestTransaction,
-  //     lastPrice,
-  //     isFirstTransaction,
-  //     bondingCost,
-  //     tokSupply,
-  //     howMuchPaid,
-  //     numOfRenters,
-  //   ];
-  // });
 
   transfer(amt, assetId).to(highestTransaction);
-  if (!isFirstTransaction) {
-    transfer(lastPrice).to(Creator);
-  }
   Creator.interact.showOutcome(highestTransaction, lastPrice);
+  transfer(balance()).to(Creator);
   commit();
   exit();
 });
