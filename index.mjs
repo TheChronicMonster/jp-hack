@@ -71,12 +71,8 @@ await ctcCreator.p.Creator({
 });
 
 // View //
-const proof = await ctc.views.Obs.proof();
-console.log(`The asset is owned by ${formatAddress(who, amt)}.`);
-const price = await ctc.views.Obs.price();
-console.log(`The price is ${parseCurrency(who, amt)}.`);
-const whoOwns = await ctc.views.Obs.whoOwns();
-console.log(`The asset is owned by ${formatAddress(who, amt)}.`);
+//const proof = await ctc.views.Obs.proof();
+console.log(`The asset is owned by ${formatAddress(who)}.`);
 
 for (const [who, acc] of bidders) {
     const [ amt, amtAsset ] = await stdlib.balancesOf(acc, [null, assetId]);

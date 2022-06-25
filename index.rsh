@@ -18,10 +18,8 @@ export const main = Reach.App(() => {
     const Gamer = API('Gamer', {
         transaction: Fun([UInt], Tuple(Address, UInt)),
     });
-    const Obs = View('Obs', {
-        proof: Fun([Address, UInt], Null),
-        price: Fun([Address, UInt], Null),
-        whoOwns: Fun([Address, UInt], Null),
+    const V = View('Obs', {
+        proof: Fun([Address], Null),
     });
     init();
 
@@ -29,7 +27,9 @@ export const main = Reach.App(() => {
         const { assetId, licenseType, shares, retailPrice, minSec, royalty, lenInBlocks } = declassify(interact.setLicense());
     });
     Creator.publish(assetId, licenseType, shares, retailPrice, minSec, royalty, lenInBlocks);
+    
     const amt = 1;
+    // V.proof.set(proof);
     commit();
     Creator.pay([[amt, assetId]]);
     Creator.interact.isReady();
