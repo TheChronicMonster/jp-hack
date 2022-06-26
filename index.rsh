@@ -80,6 +80,7 @@ export const main = Reach.App(() => {
     costOfBonding,
     bondingPaid,
     totalTokSupply,
+    tokensBought,
   ] = parallelReduce([
     Creator,
     secondaryBottom,
@@ -89,6 +90,7 @@ export const main = Reach.App(() => {
     STARTING_PACK_COST,
     0,
     totalSupply,
+    0,
   ])
     .define(() => {
       const getBalance = () => {
@@ -101,9 +103,8 @@ export const main = Reach.App(() => {
     })
     .invariant(balance() === getBalance())
     .invariant(!ownershipToken.destroyed())
-    .invariant(ownershipToken.supply() === totalSupply)
     .invariant(balance(ownershipToken) === totalTokSupply)
-    .while(lastConsensusTime() <= end)
+    .while(true)
     .paySpec([ownershipToken])
     .define(() => {
       const getCost = () => {
@@ -125,7 +126,7 @@ export const main = Reach.App(() => {
         [costOfBonding, [0, ownershipToken]],
         notify => {
           Owners.insert(this);
-          transfer(1, ownershipToken).to(this);
+          transfer([0, [1, ownershipToken]]).to(this);
           notify(null);
           return [
             this,
@@ -136,6 +137,7 @@ export const main = Reach.App(() => {
             newCost,
             bondingPaid + costOfBonding,
             totalTokSupply - 1,
+            tokensBought + 1,
           ];
         },
       ];
@@ -145,7 +147,7 @@ export const main = Reach.App(() => {
         transfer(lastPrice).to(highestTransaction);
     })
     .api_(Gamer.transaction, (transaction, rentTime) => {
-      check(balance(ownershipToken) > 0, 'has token in ctc')
+      check(balance(ownershipToken) > 0, 'has token in ctc');
       check(!isBondingCurve, 'is bonding curve');
       check(!Owners.member(this), 'already owner');
       const who = this;
@@ -159,7 +161,7 @@ export const main = Reach.App(() => {
           if (!isFirstTransaction) {
             handleNotFirstTransaction();
           }
-          transfer(1, ownershipToken).to(this);
+          transfer([0, [1, ownershipToken]]).to(this);
           Owners.insert(this);
           return [
             who,
@@ -170,16 +172,11 @@ export const main = Reach.App(() => {
             costOfBonding,
             bondingPaid,
             totalTokSupply - 1,
+            tokensBought + 1,
           ];
         },
       ];
     });
-
-  Creator.interact.showOutcome(highestTransaction, lastPrice);
-  transfer(balance()).to(Creator);
-  check(ownershipToken.supply() === totalSupply, 'supply is ok');
-  ownershipToken.burn();
-  ownershipToken.destroy()
   commit();
   exit();
 });
