@@ -8,7 +8,6 @@ export const main = Reach.App(() => {
     setLicense: Fun(
       [],
       Object({
-        assetId: Token,
         licenseType: UInt,
         shares: UInt,
         retailPrice: UInt,
@@ -29,12 +28,12 @@ export const main = Reach.App(() => {
   const V = View('Obs', {
     proof: Fun([Address], Null),
     capture: Fun([Address], Bool),
+    ownershipToken: Token
   });
   init();
 
   Creator.only(() => {
     const {
-      assetId,
       licenseType,
       shares,
       retailPrice,
@@ -45,7 +44,6 @@ export const main = Reach.App(() => {
     } = declassify(interact.setLicense());
   });
   Creator.publish(
-    assetId,
     licenseType,
     shares,
     retailPrice,
@@ -55,13 +53,23 @@ export const main = Reach.App(() => {
     isBondingCurve
   );
 
-  const amt = 1;
+  const totalSupply = UInt.max;
+  const ownershipToken = new Token({
+    name: Bytes(32).pad('Tactical'),
+    symbol: Bytes(8).pad('TTCL'),
+    supply: totalSupply,
+    decimals: 0,
+  });
+  check(ownershipToken.supply() === totalSupply, 'token has supply')
 
   commit();
-  Creator.pay([[amt, assetId]]);
+  Creator.publish();
   Creator.interact.isReady();
-  assert(balance(assetId) == amt, 'balance of asset is wrong');
   const end = lastConsensusTime() + lenInBlocks;
+
+  V.ownershipToken.set(ownershipToken);
+
+  const Owners = new Set();
 
   const [
     highestTransaction,
@@ -71,6 +79,7 @@ export const main = Reach.App(() => {
     tokSupply,
     costOfBonding,
     bondingPaid,
+    totalTokSupply,
   ] = parallelReduce([
     Creator,
     secondaryBottom,
@@ -79,6 +88,7 @@ export const main = Reach.App(() => {
     1,
     STARTING_PACK_COST,
     0,
+    totalSupply,
   ])
     .define(() => {
       const getBalance = () => {
@@ -89,9 +99,12 @@ export const main = Reach.App(() => {
         }
       };
     })
-    .invariant(balance(assetId) == amt)
     .invariant(balance() === getBalance())
+    .invariant(!ownershipToken.destroyed())
+    .invariant(ownershipToken.supply() === totalSupply)
+    .invariant(balance(ownershipToken) === totalTokSupply)
     .while(lastConsensusTime() <= end)
+    .paySpec([ownershipToken])
     .define(() => {
       const getCost = () => {
         const newSupply = tokSupply + 1;
@@ -104,11 +117,15 @@ export const main = Reach.App(() => {
       };
     })
     .api_(Gamer.doBonding, () => {
+      check(balance(ownershipToken) > 0, 'has token in ctc');
       check(isBondingCurve, 'is bonding curve');
+      check(!Owners.member(this), 'already owner');
       const [newSupply, newCost] = getCost();
       return [
-        [costOfBonding],
+        [costOfBonding, [0, ownershipToken]],
         notify => {
+          Owners.insert(this);
+          transfer(1, ownershipToken).to(this);
           notify(null);
           return [
             this,
@@ -118,6 +135,7 @@ export const main = Reach.App(() => {
             newSupply,
             newCost,
             bondingPaid + costOfBonding,
+            totalTokSupply - 1,
           ];
         },
       ];
@@ -127,18 +145,22 @@ export const main = Reach.App(() => {
         transfer(lastPrice).to(highestTransaction);
     })
     .api_(Gamer.transaction, (transaction, rentTime) => {
+      check(balance(ownershipToken) > 0, 'has token in ctc')
       check(!isBondingCurve, 'is bonding curve');
+      check(!Owners.member(this), 'already owner');
       const who = this;
       const shouldStartRent = rentTime > 0;
       const shouldEndRent = isRenting === true;
       check(transaction > lastPrice, 'transaction is too low');
       return [
-        [transaction],
+        [transaction, [0, ownershipToken]],
         notify => {
           notify([highestTransaction, lastPrice]);
           if (!isFirstTransaction) {
             handleNotFirstTransaction();
           }
+          transfer(1, ownershipToken).to(this);
+          Owners.insert(this);
           return [
             who,
             transaction,
@@ -147,14 +169,17 @@ export const main = Reach.App(() => {
             tokSupply,
             costOfBonding,
             bondingPaid,
+            totalTokSupply - 1,
           ];
         },
       ];
     });
 
-  transfer(amt, assetId).to(highestTransaction);
   Creator.interact.showOutcome(highestTransaction, lastPrice);
   transfer(balance()).to(Creator);
+  check(ownershipToken.supply() === totalSupply, 'supply is ok');
+  ownershipToken.burn();
+  ownershipToken.destroy()
   commit();
   exit();
 });
