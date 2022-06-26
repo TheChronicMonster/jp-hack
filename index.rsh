@@ -1,7 +1,7 @@
 'reach 0.1';
 const STARTING_PACK_COST = 100;
-// .000001 ALGO will be .0001 ALGO
 const PRICE_INCREASE_MULTIPLE = 100;
+const ROYALTY_PERCENT = 0.05;
 
 export const main = Reach.App(() => {
   const Creator = Participant('Creator', {
@@ -12,7 +12,6 @@ export const main = Reach.App(() => {
         shares: UInt,
         retailPrice: UInt,
         secondaryBottom: UInt,
-        royalty: UInt,
         lenInBlocks: UInt,
         isBondingCurve: Bool,
       })
@@ -26,9 +25,12 @@ export const main = Reach.App(() => {
     doBonding: Fun([], Null),
   });
   const V = View('Obs', {
-    proof: Fun([Address], Null),
     capture: Fun([Address], Bool),
-    ownershipToken: Token
+    ownershipToken: Token,
+    licenseType: UInt,
+    isRenting: Bool,
+    bondingPrice: UInt,
+    royalties: UInt,
   });
   init();
 
@@ -38,7 +40,6 @@ export const main = Reach.App(() => {
       shares,
       retailPrice,
       secondaryBottom,
-      royalty,
       lenInBlocks,
       isBondingCurve,
     } = declassify(interact.setLicense());
@@ -48,7 +49,6 @@ export const main = Reach.App(() => {
     shares,
     retailPrice,
     secondaryBottom,
-    royalty,
     lenInBlocks,
     isBondingCurve
   );
@@ -60,16 +60,18 @@ export const main = Reach.App(() => {
     supply: totalSupply,
     decimals: 0,
   });
-  check(ownershipToken.supply() === totalSupply, 'token has supply')
+  check(ownershipToken.supply() === totalSupply, 'token has supply');
 
   commit();
   Creator.publish();
   Creator.interact.isReady();
   const end = lastConsensusTime() + lenInBlocks;
 
-  V.ownershipToken.set(ownershipToken);
-
   const Owners = new Set();
+
+  V.ownershipToken.set(ownershipToken);
+  V.capture.set(addy => Owners.member(addy));
+  V.licenseType.set(licenseType);
 
   const [
     highestTransaction,
@@ -81,6 +83,7 @@ export const main = Reach.App(() => {
     bondingPaid,
     totalTokSupply,
     tokensBought,
+    royalties,
   ] = parallelReduce([
     Creator,
     secondaryBottom,
@@ -91,8 +94,13 @@ export const main = Reach.App(() => {
     0,
     totalSupply,
     0,
+    0,
   ])
     .define(() => {
+      V.isRenting.set(isRenting);
+      V.bondingPrice.set(bondingPaid);
+      V.royalties.set(royalties);
+
       const getBalance = () => {
         if (isBondingCurve) {
           return bondingPaid;
@@ -122,8 +130,9 @@ export const main = Reach.App(() => {
       check(isBondingCurve, 'is bonding curve');
       check(!Owners.member(this), 'already owner');
       const [newSupply, newCost] = getCost();
+      const newRoyals = costOfBonding * (5 / 100);
       return [
-        [costOfBonding, [0, ownershipToken]],
+        [costOfBonding + newRoyals, [0, ownershipToken]],
         notify => {
           Owners.insert(this);
           transfer([0, [1, ownershipToken]]).to(this);
@@ -135,9 +144,10 @@ export const main = Reach.App(() => {
             false,
             newSupply,
             newCost,
-            bondingPaid + costOfBonding,
+            bondingPaid + costOfBonding + newRoyals,
             totalTokSupply - 1,
             tokensBought + 1,
+            royalties + newRoyals,
           ];
         },
       ];
@@ -154,8 +164,9 @@ export const main = Reach.App(() => {
       const shouldStartRent = rentTime > 0;
       const shouldEndRent = isRenting === true;
       check(transaction > lastPrice, 'transaction is too low');
+      const newRoyals = transaction * (5 / 100);
       return [
-        [transaction, [0, ownershipToken]],
+        [transaction + newRoyals, [0, ownershipToken]],
         notify => {
           notify([highestTransaction, lastPrice]);
           if (!isFirstTransaction) {
@@ -165,7 +176,7 @@ export const main = Reach.App(() => {
           Owners.insert(this);
           return [
             who,
-            transaction,
+            transaction + newRoyals,
             false,
             shouldStartRent,
             tokSupply,
@@ -173,6 +184,7 @@ export const main = Reach.App(() => {
             bondingPaid,
             totalTokSupply - 1,
             tokensBought + 1,
+            royalties + newRoyals,
           ];
         },
       ];
