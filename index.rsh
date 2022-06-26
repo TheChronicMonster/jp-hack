@@ -28,6 +28,7 @@ export const main = Reach.App(() => {
   });
   const V = View('Obs', {
     proof: Fun([Address], Null),
+    capture: Fun([Address], Bool),
   });
   init();
 
